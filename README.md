@@ -32,7 +32,8 @@ set! { $(literal),* }
 
 # Examples
 ```rs
-# use set_builder::set;
+use set_builder::set;
+
 // Single-binding set with a predicate
 let set = set! { x : x <- [1, 2, 3], *x > 1 };
 assert_eq!(set.collect::<Vec<_>>(), [2, 3]);
