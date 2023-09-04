@@ -1,0 +1,7 @@
+error: proc macro panicked
+ --> tests/errors/unused_binding_extra.rs:4:13
+  |
+4 |     let _ = set! { (x, y) : x <- [1, 2, 3] };
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: message: y is not bound to any sets

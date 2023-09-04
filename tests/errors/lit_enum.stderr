@@ -1,0 +1,7 @@
+error: proc macro panicked
+ --> tests/errors/lit_enum.rs:4:5
+  |
+4 |     set! { x };
+  |     ^^^^^^^^^^
+  |
+  = help: message: expected `:` after bindings, if you were trying to create an array, use `[...]` instead
