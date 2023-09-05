@@ -5,7 +5,6 @@
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
-    parenthesized,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
@@ -16,30 +15,12 @@ extern crate proc_macro;
 
 type Cst<T> = Punctuated<T, Token![,]>;
 
-enum Bindings {
-    One(Ident),
-    Many(Cst<Ident>),
-}
-
-impl ToTokens for Bindings {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        *tokens = match self {
-            Self::One(one) => quote! {
-                |#one|
-            },
-            Self::Many(many) => quote! {
-                |(#many)|
-            },
-        }
-    }
-}
-
 enum SetBuilderInput {
     Enum {
         literals: Cst<Lit>,
     },
     Full {
-        bindings: Bindings,
+        map: Expr,
         set_mappings: Cst<SetMapping>,
         predicate: Option<Expr>,
     },
@@ -82,17 +63,7 @@ impl Parse for SetBuilderInput {
             let literals = input.parse_terminated(Lit::parse, Token![,])?;
 
             Ok(Self::Enum { literals })
-        } else if lookahead.peek(Ident) || lookahead.peek(syn::token::Paren) {
-            let bindings;
-
-            if input.peek(syn::token::Paren) {
-                let content;
-                parenthesized!(content in input);
-                bindings = Bindings::Many(content.parse_terminated(Ident::parse, Token![,])?);
-            } else {
-                bindings = Bindings::One(input.parse::<Ident>()?);
-            }
-
+        } else if let Ok(map) = input.parse::<Expr>() {
             if input.parse::<Token![:]>().is_err() {
                 panic!("expected `:` after bindings, if you were trying to create an array, use `[...]` instead");
             }
@@ -111,33 +82,6 @@ impl Parse for SetBuilderInput {
                 }
             }
 
-            match bindings {
-                Bindings::Many(ref bindings) => {
-                    for mapping in &set_mappings {
-                        if !bindings.iter().any(|binding| *binding == mapping.name) {
-                            panic!("binding to {} is unused", mapping.name);
-                        }
-                    }
-
-                    for binding in bindings {
-                        if !set_mappings.iter().any(|mapping| *binding == mapping.name) {
-                            panic!("{} is not bound to any sets", binding);
-                        }
-                    }
-                }
-                Bindings::One(ref binding) => {
-                    if !set_mappings.iter().any(|mapping| *binding == mapping.name) {
-                        panic!("{} is not bound to any sets", binding);
-                    }
-
-                    for mapping in &set_mappings {
-                        if mapping.name != *binding {
-                            panic!("binding to {} is unused", mapping.name);
-                        }
-                    }
-                }
-            }
-
             if !input.is_empty() {
                 if let Ok(pred) = input.parse::<Expr>() {
                     predicate = Some(pred);
@@ -147,7 +91,7 @@ impl Parse for SetBuilderInput {
             }
 
             Ok(Self::Full {
-                bindings,
+                map,
                 set_mappings,
                 predicate,
             })
@@ -167,11 +111,12 @@ pub fn set(input: TokenStream) -> TokenStream {
             [ #literals ]
         },
         SetBuilderInput::Full {
-            bindings,
+            map,
             set_mappings,
             predicate,
         } => {
             let mut iter = set_mappings.iter().enumerate().peekable();
+            let mut names: Cst<Ident> = Punctuated::new();
             let mut acc = quote!();
 
             if let Some((_, first)) = iter.next() {
@@ -182,6 +127,9 @@ pub fn set(input: TokenStream) -> TokenStream {
 
             if let Some((idx, second)) = iter.next() {
                 let name = set_mappings[idx - 1].name.clone();
+                names.push_value(name.clone());
+                names.push_punct(syn::token::Comma::default());
+
                 acc = quote! {
                     #acc.flat_map(|#name| {
                         ::std::iter::repeat(#name).zip(#second)
@@ -191,6 +139,9 @@ pub fn set(input: TokenStream) -> TokenStream {
 
             for (idx, mapping) in iter {
                 let name = set_mappings[idx - 1].name.clone();
+                names.push_value(name.clone());
+                names.push_punct(syn::token::Comma::default());
+
                 acc = quote! {
                     #acc.flat_map(|#name| {
                         ::core::iter::repeat(#name).zip(#mapping).map(|out| (out.0.0, out.0.1, out.1))
@@ -198,9 +149,17 @@ pub fn set(input: TokenStream) -> TokenStream {
                 };
             }
 
+            if let Some(m) = set_mappings.last() {
+                names.push_value(m.name.clone())
+            }
+
+            let tuple = quote! {
+                (#names)
+            };
+
             match predicate {
                 Some(predicate) => quote! {
-                    #acc.filter(#bindings #predicate)
+                    #acc.filter(|#tuple| #predicate).map(|#tuple| #map)
                 },
                 None => quote! { #acc },
             }

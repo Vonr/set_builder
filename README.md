@@ -7,14 +7,13 @@ It should be noted that these "sets" are not true sets in the sense that there i
 # Syntax
 ## Complex Set
 ```rs
-//  The name(s) of the binding(s)
-//               │
-//               │       ┌── Set(s) that evaluate into types implementing `IntoIterator`.
-//               │       │
-//       ┌───────┤       │        ┌─ The optional predicate, evaluates to `bool`
-//       ▼       ▼       ▼        ▼
-set! { ident : ident <- expr $(, expr?) }
-set! { ($(ident),*) : $(ident <- expr),* $(, expr)? }
+//   The name(s) of the binding(s)
+//                │
+//     Mapping    │       ┌── Expressions that evaluate into types implementing `IntoIterator`.
+//   expression   │       │
+//       │        │       │           ┌─ The optional predicate, evaluates to `bool`
+//       ▼        ▼       ▼           ▼
+set! { expr : $(ident <- expr),* $(, expr)? }
 ```
 
 ## Simple Enumeration Set
@@ -35,8 +34,8 @@ set! { $(literal),* }
 use set_builder::set;
 
 // Single-binding set with a predicate
-let set = set! { x : x <- [1, 2, 3], *x > 1 };
-assert_eq!(set.collect::<Vec<_>>(), [2, 3]);
+let set = set! { x * 2 : x <- [1, 2, 3], *x > 1 };
+assert_eq!(set.collect::<Vec<_>>(), [4, 6]);
 
 // Cartesian product without a predicate
 let set = set! { (x, y) : x <- [1, 2], y <- [3, 4] };
