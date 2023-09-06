@@ -2,7 +2,7 @@ use set_builder::set;
 
 #[test]
 fn full_unpredicated() {
-    let set = set! { (x, _y, _z) : x <- [1, 2, 3], _y <- [4, 5, 6], _z <- [7, 8, 9] };
+    let set = set! { (x, y, z) : x <- [1, 2, 3], y <- [4, 5, 6], z <- [7, 8, 9] };
 
     assert_eq!(
         set.collect::<Vec<_>>(),
@@ -40,7 +40,7 @@ fn full_unpredicated() {
 
 #[test]
 fn full_predicated() {
-    let set = set! { (x, _y, _z) : x <- [1, 2, 3], _y <- [4, 5, 6], _z <- [7, 8, 9], *x > 1 };
+    let set = set! { (x, y, z) : x <- [1, 2, 3], y <- [4, 5, 6], z <- [7, 8, 9], *x > 1 };
 
     assert_eq!(
         set.collect::<Vec<_>>(),

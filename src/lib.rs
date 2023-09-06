@@ -43,6 +43,7 @@ mod punc {
     use syn::custom_punctuation;
 
     custom_punctuation!(In, <-);
+    custom_punctuation!(SuchThat, :);
 }
 
 impl Parse for SetMapping {
@@ -64,7 +65,7 @@ impl Parse for SetBuilderInput {
 
             Ok(Self::Enum { literals })
         } else if let Ok(map) = input.parse::<Expr>() {
-            if input.parse::<Token![:]>().is_err() {
+            if input.parse::<punc::SuchThat>().is_err() {
                 panic!("expected `:` after bindings, if you were trying to create an array, use `[...]` instead");
             }
 
@@ -132,7 +133,7 @@ pub fn set(input: TokenStream) -> TokenStream {
 
                 acc = quote! {
                     #acc.flat_map(|#name| {
-                        ::std::iter::repeat(#name).zip(#second)
+                        ::core::iter::repeat(#name).zip(#second)
                     })
                 };
             }
@@ -157,11 +158,17 @@ pub fn set(input: TokenStream) -> TokenStream {
                 (#names)
             };
 
-            match predicate {
-                Some(predicate) => quote! {
-                    #acc.filter(|#tuple| #predicate).map(|#tuple| #map)
-                },
-                None => quote! { #acc },
+            if let Some(predicate) = predicate {
+                acc = quote! {
+                    #acc.filter(|#tuple| #predicate)
+                };
+            }
+
+            quote! {
+                {
+                    #[allow(unused_variables)]
+                    #acc.map(|#tuple| #map)
+                }
             }
         }
     }
