@@ -9,11 +9,11 @@ It should be noted that these "sets" are not true sets in the sense that there i
 ```rust,ignore
 //   The pattern of the binding(s)
 //               │
-//     Mapping   │       ┌── Expressions that evaluate into types implementing `IntoIterator`.
-//   expression  │       │
-//       │       │       │           ┌─ The optional predicate, evaluates to `bool`
-//       ▼       ▼       ▼           ▼
-set! { expr : $(expr <- expr),* $(, expr)? }
+//   Mapping     │      ┌── Expressions that evaluate into types implementing `IntoIterator`.
+//  expression   │      │
+//      │        │      │           ┌─ The optional predicate, evaluates to `bool`
+//      ▼        ▼      ▼           ▼
+set! { expr : $(pat <- expr),* $(, expr)? }
 ```
 
 ## Simple Enumeration Set
