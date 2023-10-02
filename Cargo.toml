@@ -1,6 +1,6 @@
 [package]
 name = "set_builder"
-version = "2.0.1"
+version = "3.0.0"
 edition = "2021"
 description = "A procedural macro to create Iterators over a set defined by Haskell-inspired set-builder notation."
 license = "MIT"

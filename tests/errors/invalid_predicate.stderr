@@ -1,7 +1,5 @@
-error: proc macro panicked
- --> tests/errors/invalid_predicate.rs:4:5
+error[E0308]: mismatched types
+ --> tests/errors/invalid_predicate.rs:4:32
   |
 4 |     set! { x : x <- [1, 2, 3], x + 1 };
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = help: message: invalid predicate, predicates should evaluate to a `bool`
+  |                                ^^^^^ expected `bool`, found integer

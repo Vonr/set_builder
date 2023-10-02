@@ -6,14 +6,14 @@ It should be noted that these "sets" are not true sets in the sense that there i
 
 # Syntax
 ## Complex Set
-```rs
-//   The name(s) of the binding(s)
-//                │
-//     Mapping    │       ┌── Expressions that evaluate into types implementing `IntoIterator`.
-//   expression   │       │
-//       │        │       │           ┌─ The optional predicate, evaluates to `bool`
-//       ▼        ▼       ▼           ▼
-set! { expr : $(ident <- expr),* $(, expr)? }
+```rust,ignore
+//   The pattern of the binding(s)
+//               │
+//     Mapping   │       ┌── Expressions that evaluate into types implementing `IntoIterator`.
+//   expression  │       │
+//       │       │       │           ┌─ The optional predicate, evaluates to `bool`
+//       ▼       ▼       ▼           ▼
+set! { expr : $(expr <- expr),* $(, expr)? }
 ```
 
 ## Simple Enumeration Set
@@ -23,14 +23,14 @@ array syntax `[...]` should always be preferred to this.
 It is noteworthy that this will only work with literals.
 If you wish to use identifiers, please use array syntax instead.
 
-```rs
+```rust,ignore
 //         ┌─ Literal(s) to put in the set
 //         ▼
 set! { $(literal),* }
 ```
 
 # Examples
-```rs
+```rust
 use set_builder::set;
 
 // Single-binding set with a predicate

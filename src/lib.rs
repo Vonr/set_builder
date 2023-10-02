@@ -1,14 +1,12 @@
-//! # set_builder
-//!
-#![doc = include_str!("./DOCS.md")]
+#![doc = include_str!("../README.md")]
 
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
-    parse::{Parse, ParseStream},
+    parse::{discouraged::Speculative, Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Expr, Ident, Lit, Token,
+    Expr, Lit, Pat, Token,
 };
 
 extern crate proc_macro;
@@ -28,7 +26,7 @@ enum SetBuilderInput {
 
 #[derive(Clone)]
 struct SetMapping {
-    name: Ident,
+    name: Pat,
     set: Expr,
 }
 
@@ -39,21 +37,23 @@ impl ToTokens for SetMapping {
     }
 }
 
+impl Parse for SetMapping {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let begin = input.fork();
+        let name = Pat::parse_single(&begin)?;
+        begin.parse::<punc::In>()?;
+        let set = begin.parse::<Expr>()?;
+        input.advance_to(&begin);
+
+        Ok(Self { name, set })
+    }
+}
+
 mod punc {
     use syn::custom_punctuation;
 
     custom_punctuation!(In, <-);
     custom_punctuation!(SuchThat, :);
-}
-
-impl Parse for SetMapping {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name = input.parse::<Ident>()?;
-        input.parse::<punc::In>()?;
-        let set = input.parse::<Expr>()?;
-
-        Ok(Self { name, set })
-    }
 }
 
 impl Parse for SetBuilderInput {
@@ -87,7 +87,10 @@ impl Parse for SetBuilderInput {
                 if let Ok(pred) = input.parse::<Expr>() {
                     predicate = Some(pred);
                 } else {
-                    panic!("invalid predicate, predicates should evaluate to a `bool`");
+                    panic!(
+                        "invalid predicate `{}`, predicates should evaluate to a `bool`",
+                        input
+                    );
                 }
             }
 
@@ -102,7 +105,7 @@ impl Parse for SetBuilderInput {
     }
 }
 
-#[doc = include_str!("./DOCS.md")]
+#[doc = include_str!("../README.md")]
 #[proc_macro]
 pub fn set(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input);
@@ -117,7 +120,7 @@ pub fn set(input: TokenStream) -> TokenStream {
             predicate,
         } => {
             let mut iter = set_mappings.iter().enumerate().peekable();
-            let mut names: Cst<Ident> = Punctuated::new();
+            let mut names: Cst<Pat> = Punctuated::new();
             let mut acc = quote!();
 
             if let Some((_, first)) = iter.next() {
