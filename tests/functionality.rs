@@ -1,3 +1,5 @@
+#![recursion_limit = "1024"]
+
 use set_builder::set;
 
 #[test]
@@ -65,6 +67,33 @@ fn full_predicated() {
             (3, 6, 9)
         ]
     );
+}
+
+#[test]
+fn full_pattern() {
+    let set = set! { (*a, *b) : (i, a) <- [1, 2, 3].iter().enumerate(), (j, b) <- [10, 20, 30].iter().enumerate(), i != j };
+    assert_eq!(
+        set.collect::<Vec<_>>(),
+        [(1, 20), (1, 30), (2, 10), (2, 30), (3, 10), (3, 20)]
+    );
+}
+
+#[test]
+fn many() {
+    let set = set! { (a, b, c, d, e, f, g, h, i, j, k)
+        : a <- [1, 2, 3],
+          b <- [1, 2, 3],
+          c <- [1, 2, 3],
+          d <- [1, 2, 3],
+          e <- [1, 2, 3],
+          f <- [1, 2, 3],
+          g <- [1, 2, 3],
+          h <- [1, 2, 3],
+          i <- [1, 2, 3],
+          j <- [1, 2, 3],
+          k <- [1, 2, 3],
+    };
+    assert_eq!(set.count(), 3_usize.pow(11));
 }
 
 #[test]

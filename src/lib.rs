@@ -1,11 +1,13 @@
 #![doc = include_str!("../README.md")]
 
 use proc_macro::TokenStream;
+use proc_macro_error::{abort, proc_macro_error};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{discouraged::Speculative, Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
+    spanned::Spanned,
     Expr, Lit, Pat, Token,
 };
 
@@ -66,7 +68,7 @@ impl Parse for SetBuilderInput {
             Ok(Self::Enum { literals })
         } else if let Ok(map) = input.parse::<Expr>() {
             if input.parse::<punc::SuchThat>().is_err() {
-                panic!("expected `:` after bindings, if you were trying to create an array, use `[...]` instead");
+                abort!(input.span(), "expected `:` after bindings, if you were trying to create an array, use `[...]` instead");
             }
 
             let mut set_mappings: Cst<SetMapping> = Punctuated::new();
@@ -87,11 +89,37 @@ impl Parse for SetBuilderInput {
                 if let Ok(pred) = input.parse::<Expr>() {
                     predicate = Some(pred);
                 } else {
-                    panic!(
+                    abort!(
                         "invalid predicate `{}`, predicates should evaluate to a `bool`",
                         input
                     );
                 }
+            }
+
+            if !input.is_empty() {
+                abort!(
+                    input.to_string(),
+                    "Found leftover input `{}`,\nperhaps one of your mappings were treated as the predicate due to bad syntax.\n - map: `{}`\n - set_mappings: {:?}, \n - predicate: `{}`",
+                    input,
+                    map.span().source_text().unwrap_or_else(|| "<unknown>".to_string()),
+                    set_mappings
+                        .iter()
+                        .map(|sm| {
+                            let name = sm
+                                .name
+                                .span()
+                                .source_text()
+                                .unwrap_or_else(|| "<unknown>".to_string());
+                            let set = sm
+                                .set
+                                .span()
+                                .source_text()
+                                .unwrap_or_else(|| "<unknown>".to_string());
+                            format!("{name} <- {set}")
+                        })
+                        .collect::<Vec<_>>(),
+                    predicate.span().source_text().unwrap_or_else(|| "<unknown>".to_string()),
+                );
             }
 
             Ok(Self::Full {
@@ -106,6 +134,7 @@ impl Parse for SetBuilderInput {
 }
 
 #[doc = include_str!("../README.md")]
+#[proc_macro_error]
 #[proc_macro]
 pub fn set(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input);
@@ -144,11 +173,14 @@ pub fn set(input: TokenStream) -> TokenStream {
             for (idx, mapping) in iter {
                 let name = set_mappings[idx - 1].name.clone();
                 names.push_value(name.clone());
+                let tuple = quote! {
+                    (#names)
+                };
                 names.push_punct(syn::token::Comma::default());
 
                 acc = quote! {
                     #acc.flat_map(|#name| {
-                        ::core::iter::repeat(#name).zip(#mapping).map(|out| (out.0.0, out.0.1, out.1))
+                        ::core::iter::repeat(#name).zip(#mapping).map(|(#tuple, new)| (#names new))
                     })
                 };
             }
