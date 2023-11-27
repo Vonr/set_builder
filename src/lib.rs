@@ -1,13 +1,14 @@
 #![doc = include_str!("../README.md")]
 
+use std::iter::{Enumerate, Peekable};
+
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{discouraged::Speculative, Parse, ParseStream},
     parse_macro_input,
-    punctuated::Punctuated,
-    spanned::Spanned,
+    punctuated::{Iter, Punctuated},
     Expr, Lit, Pat, Token,
 };
 
@@ -15,14 +16,59 @@ extern crate proc_macro;
 
 type Cst<T> = Punctuated<T, Token![,]>;
 
+#[derive(Clone)]
+enum Auxiliary {
+    SetMapping(SetMapping),
+    Predicate(Expr),
+}
+
+#[allow(dead_code)]
+impl Auxiliary {
+    pub fn is_set_mapping(&self) -> bool {
+        match self {
+            Auxiliary::SetMapping(_) => true,
+            Auxiliary::Predicate(_) => false,
+        }
+    }
+
+    pub fn is_predicate(&self) -> bool {
+        match self {
+            Auxiliary::SetMapping(_) => false,
+            Auxiliary::Predicate(_) => true,
+        }
+    }
+
+    pub fn into_set_mapping(self) -> SetMapping {
+        match self {
+            Auxiliary::SetMapping(sm) => sm,
+            Auxiliary::Predicate(_) => panic!("Tried to interpret a Predicate as a SetMapping."),
+        }
+    }
+
+    pub fn into_predicate(self) -> Expr {
+        match self {
+            Auxiliary::Predicate(pred) => pred,
+            Auxiliary::SetMapping(_) => panic!("Tried to interpret a SetMapping as a Predicate."),
+        }
+    }
+}
+
+impl ToTokens for Auxiliary {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Auxiliary::SetMapping(sm) => sm.to_tokens(tokens),
+            Auxiliary::Predicate(pred) => pred.to_tokens(tokens),
+        }
+    }
+}
+
 enum SetBuilderInput {
     Enum {
-        literals: Cst<Lit>,
+        exprs: Cst<Expr>,
     },
     Full {
         map: Expr,
-        set_mappings: Cst<SetMapping>,
-        predicate: Option<Expr>,
+        auxiliary: Cst<Auxiliary>,
     },
 }
 
@@ -51,6 +97,16 @@ impl Parse for SetMapping {
     }
 }
 
+impl Parse for Auxiliary {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        if let Ok(set_mapping) = SetMapping::parse(input) {
+            return Ok(Auxiliary::SetMapping(set_mapping));
+        }
+
+        Ok(Auxiliary::Predicate(Expr::parse(input)?))
+    }
+}
+
 mod punc {
     use syn::custom_punctuation;
 
@@ -63,70 +119,28 @@ impl Parse for SetBuilderInput {
         let lookahead = input.lookahead1();
 
         if input.is_empty() || lookahead.peek(Lit) {
-            let literals = input.parse_terminated(Lit::parse, Token![,])?;
+            let exprs = input.parse_terminated(Expr::parse, Token![,])?;
 
-            Ok(Self::Enum { literals })
+            Ok(Self::Enum { exprs })
         } else if let Ok(map) = input.parse::<Expr>() {
             if input.parse::<punc::SuchThat>().is_err() {
                 abort!(input.span(), "expected `:` after bindings, if you were trying to create an array, use `[...]` instead");
             }
 
-            let mut set_mappings: Cst<SetMapping> = Punctuated::new();
-            let mut predicate = None;
+            let mut auxiliary: Cst<Auxiliary> = Punctuated::new();
 
             while !input.is_empty() {
-                if let Ok(mapping) = input.parse::<SetMapping>() {
-                    set_mappings.push_value(mapping);
+                if let Ok(aux) = input.parse::<Auxiliary>() {
+                    auxiliary.push_value(aux);
                     if let Some(p) = input.parse()? {
-                        set_mappings.push_punct(p);
+                        auxiliary.push_punct(p);
                     }
                 } else {
                     break;
                 }
             }
 
-            if !input.is_empty() {
-                if let Ok(pred) = input.parse::<Expr>() {
-                    predicate = Some(pred);
-                } else {
-                    abort!(
-                        "invalid predicate `{}`, predicates should evaluate to a `bool`",
-                        input
-                    );
-                }
-            }
-
-            if !input.is_empty() {
-                abort!(
-                    input.to_string(),
-                    "Found leftover input `{}`,\nperhaps one of your mappings were treated as the predicate due to bad syntax.\n - map: `{}`\n - set_mappings: {:?}, \n - predicate: `{}`",
-                    input,
-                    map.span().source_text().unwrap_or_else(|| "<unknown>".to_string()),
-                    set_mappings
-                        .iter()
-                        .map(|sm| {
-                            let name = sm
-                                .name
-                                .span()
-                                .source_text()
-                                .unwrap_or_else(|| "<unknown>".to_string());
-                            let set = sm
-                                .set
-                                .span()
-                                .source_text()
-                                .unwrap_or_else(|| "<unknown>".to_string());
-                            format!("{name} <- {set}")
-                        })
-                        .collect::<Vec<_>>(),
-                    predicate.span().source_text().unwrap_or_else(|| "<unknown>".to_string()),
-                );
-            }
-
-            Ok(Self::Full {
-                map,
-                set_mappings,
-                predicate,
-            })
+            Ok(Self::Full { map, auxiliary })
         } else {
             Err(lookahead.error())
         }
@@ -140,69 +154,120 @@ pub fn set(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input);
 
     match input {
-        SetBuilderInput::Enum { literals } => quote! {
-            [ #literals ]
+        SetBuilderInput::Enum { exprs } => quote! {
+            [ #exprs ]
         },
-        SetBuilderInput::Full {
-            map,
-            set_mappings,
-            predicate,
-        } => {
-            let mut iter = set_mappings.iter().enumerate().peekable();
+        SetBuilderInput::Full { map, auxiliary } => {
+            let mut iter = auxiliary.iter().enumerate().peekable();
             let mut names: Cst<Pat> = Punctuated::new();
             let mut acc = quote!();
 
+            let consume_predicates = |iter: &mut Peekable<Enumerate<Iter<'_, Auxiliary>>>, names: &Cst<Pat>, acc: &mut proc_macro2::TokenStream| {
+                while iter.peek().map(|(_, aux)| aux.is_predicate()).unwrap_or_default() {
+                    let (_, predicate) = iter.next().unwrap();
+                    match names.len() {
+                        0 => {
+                            *acc = quote! {
+                                #acc.filter(|_| #predicate)
+                            };
+                        },
+                        1 => {
+                            let name = &names[0];
+                            *acc = quote! {
+                                #acc.filter(|#name| #predicate)
+                            };
+                        },
+                        _ => {
+                            let tuple = quote! {
+                                (#names)
+                            };
+                            *acc = quote! {
+                                #acc.filter(|#tuple| #predicate)
+                            };
+                        }
+                    }
+                }
+            };
+
+            consume_predicates(&mut iter, &names, &mut acc);
+
             if let Some((_, first)) = iter.next() {
+                names.push_value(first.clone().into_set_mapping().name.clone());
+                names.push_punct(syn::token::Comma::default());
                 acc = quote! {
                     #first
                 };
             }
 
-            if let Some((idx, second)) = iter.next() {
-                let name = set_mappings[idx - 1].name.clone();
-                names.push_value(name.clone());
-                names.push_punct(syn::token::Comma::default());
+            consume_predicates(&mut iter, &names, &mut acc);
+
+            if let Some((_, second)) = iter.next() {
+                let name = names.last().unwrap();
 
                 acc = quote! {
                     #acc.flat_map(|#name| {
                         ::core::iter::repeat(#name).zip(#second)
                     })
                 };
+                names.push_value(second.clone().into_set_mapping().name);
+                names.push_punct(syn::token::Comma::default());
             }
 
-            for (idx, mapping) in iter {
-                let name = set_mappings[idx - 1].name.clone();
-                names.push_value(name.clone());
+            for (_, aux) in iter {
                 let tuple = quote! {
                     (#names)
                 };
-                names.push_punct(syn::token::Comma::default());
+                let name = names.last().unwrap();
+                match aux {
+                    Auxiliary::SetMapping(sm) => {
+                        acc = quote! {
+                            #acc.flat_map(|#name| {
+                                ::core::iter::repeat(#name).zip(#aux).map(|(#tuple, new)| (#names new))
+                            })
+                        };
 
-                acc = quote! {
-                    #acc.flat_map(|#name| {
-                        ::core::iter::repeat(#name).zip(#mapping).map(|(#tuple, new)| (#names new))
-                    })
-                };
+                        names.push_value(sm.name.clone());
+                        names.push_punct(syn::token::Comma::default());
+                    },
+                    Auxiliary::Predicate(pred) => {
+                        acc = quote! {
+                            #acc.filter(|#tuple| #pred)
+                        };
+                    },
+                }
+
             }
 
-            if let Some(m) = set_mappings.last() {
-                names.push_value(m.name.clone())
-            }
-
-            let tuple = quote! {
-                (#names)
-            };
-
-            if let Some(predicate) = predicate {
-                acc = quote! {
-                    #acc.filter(|#tuple| #predicate)
-                };
-            }
-
-            quote! {
-                {
-                    #[allow(unused_variables)]
-                    #acc.map(|#tuple| #map)
+            match names.len() {
+                0 => {
+                    quote! {
+                        quote! {
+                            {
+                                #[allow(unused_variables)]
+                                #acc.map(|_| #map)
+                            }
+                        }
+                    }
+                },
+                1 => {
+                    let name = &names[0];
+                    quote! {
+                        {
+                            #[allow(unused_variables)]
+                            #acc.map(|#name| #map)
+                        }
+                    }
+                },
+                _ => {
+                    let tuple = quote! {
+                        (#names)
+                    };
+                    quote! {
+                        {
+                            #[allow(unused_variables)]
+                            #acc.map(|#tuple| #map)
+                        }
+                    }
                 }
             }
         }

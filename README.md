@@ -9,24 +9,21 @@ It should be noted that these "sets" are not true sets in the sense that there i
 ```rust,ignore
 //   The pattern of the binding(s)
 //               │
-//   Mapping     │      ┌── Expressions that evaluate into types implementing `IntoIterator`.
+//   Mapping     │      ┌── Expression that evaluate into types implementing `IntoIterator`.
 //  expression   │      │
-//      │        │      │           ┌─ The optional predicate, evaluates to `bool`
-//      ▼        ▼      ▼           ▼
-set! { expr : $(pat <- expr),* $(, expr)? }
+//      │        │      │            ┌─ Predicate that evaluates to `bool`
+//      ▼        ▼      ▼            ▼
+set![ expr : $($(pat <- expr) | $(, expr)),* ]
 ```
 
 ## Simple Enumeration Set
 This is only provided for mathematical parity and returns arrays rather than Iterators,
 array syntax `[...]` should always be preferred to this.
 
-It is noteworthy that this will only work with literals.
-If you wish to use identifiers, please use array syntax instead.
-
 ```rust,ignore
 //         ┌─ Literal(s) to put in the set
 //         ▼
-set! { $(literal),* }
+set![ $(expr),* ]
 ```
 
 # Examples
@@ -34,14 +31,14 @@ set! { $(literal),* }
 use set_builder::set;
 
 // Single-binding set with a predicate
-let set = set! { x * 2 : x <- [1, 2, 3], *x > 1 };
+let set = set![ x * 2 : x <- [1, 2, 3], *x > 1 ];
 assert_eq!(set.collect::<Vec<_>>(), [4, 6]);
 
 // Cartesian product without a predicate
-let set = set! { (x, y) : x <- [1, 2], y <- [3, 4] };
+let set = set![ (x, y) : x <- [1, 2], y <- [3, 4] ];
 assert_eq!(set.collect::<Vec<_>>(), [(1, 3), (1, 4), (2, 3), (2, 4)]);
 
 // Simple enumeration
-let set = set! { 1, 2, 3, 4, 5 };
+let set = set![ 1, 2, 3, 4, 5 ];
 assert_eq!(set, [1, 2, 3, 4, 5]);
 ```

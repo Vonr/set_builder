@@ -1,11 +1,5 @@
-error: Found leftover input `, x != 2`,
-       perhaps one of your mappings were treated as the predicate due to bad syntax.
-        - map: `x`
-        - set_mappings: ["x <- [1, 2, 3]"],
-        - predicate: `[4, 5, 6]`
- --> tests/errors/leftover_due_to_bad_mapping.rs:4:5
+error[E0308]: mismatched types
+ --> tests/errors/leftover_due_to_bad_mapping.rs:4:32
   |
-4 |     set! { x : x <- [1, 2, 3], [4, 5, 6], x != 2 };
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: this error originates in the macro `set` (in Nightly builds, run with -Z macro-backtrace for more info)
+4 |     set! { x : x <- [1, 2, 3], [4, 5, 6], *x != 2 };
+  |                                ^^^^^^^^^ expected `bool`, found `[{integer}; 3]`
