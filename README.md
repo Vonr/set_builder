@@ -13,7 +13,7 @@ It should be noted that these "sets" are not true sets in the sense that there i
 //  expression   │      │
 //      │        │      │            ┌─ Predicate that evaluates to `bool`
 //      ▼        ▼      ▼            ▼
-set![ expr : $($(pat <- expr) | $(, expr)),* ]
+set![ expr : $($(pat <- expr) | $(expr)),* ]
 ```
 
 ## Simple Enumeration Set
@@ -21,8 +21,8 @@ This is only provided for mathematical parity and returns arrays rather than Ite
 array syntax `[...]` should always be preferred to this.
 
 ```rust,ignore
-//         ┌─ Literal(s) to put in the set
-//         ▼
+//        ┌─ Values to put in the set
+//        ▼
 set![ $(expr),* ]
 ```
 
